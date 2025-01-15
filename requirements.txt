@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+pymongo
+python-multipart
+python-dotenv
+dnspython
+starlette
+pydantic
+lxml
+requests
+schedule
+tqdm
+numpy
+hdbscan
+openai
+uuid
