@@ -1,5 +1,9 @@
 ## China Social Event Database (CSED)
 
+![preview](/preview.png)
+
+Homepage: [https://csed.zheqiaoc.com](https://csed.zheqiaoc.com)
+
 China Social Event Database (CSED) is a timeline-based event aggregation and analysis tool designed to record daily social dynamics and online public opinion.
 
 The development of China Social Event Database (CSED) stems from two questions:
@@ -46,7 +50,9 @@ npm install
 #### Step 2
 
 Configure backend/config.json, replace MONGO_URI and API_KEY
+
 Configure frontend/server.py, replace MONGO_URI
+
 Configure api/events.py, replace MONGO_URI
 
 #### Step 3

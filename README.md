@@ -2,6 +2,10 @@
 
 ## 中国社会事件数据库（CSED）
 
+![preview](/preview.png)
+
+主页：[https://csed.zheqiaoc.com](https://csed.zheqiaoc.com)
+
 中国社会事件数据库（CSED）是一个基于时间线的事件汇总和分析工具，旨在记录每日社会动态与网络舆情。
 
 中国社会事件数据库的开发源于两个问题：
@@ -50,7 +54,9 @@ npm install
 #### 第二步
 
 配置backend/config.json，替换MONGO_URI和API_KEY
+
 配置frontend/server.py，替换MONGO_URI
+
 配置api/events.py，替换MONGO_URI
 
 #### 第三步
