@@ -39,6 +39,11 @@ class handler(BaseHTTPRequestHandler):
                             }
                         }
                     }
+                },
+                {
+                    "$match": {
+                        "$expr": {"$gte": [{"$size": "$posts"}, 6]}
+                    }
                 }
             ]
             

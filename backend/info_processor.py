@@ -241,6 +241,7 @@ class InfoProcessor:
         """
         为满足最小簇大小要求的簇生成标题。
         只为大小超过 min_cluster_size 的簇生成标题和event_id。
+        相同标题的事件会共用同一个event_id。
         """
         clusterer = self.clusterer
         # 一次性拿到所有符合条件的文档
@@ -255,6 +256,16 @@ class InfoProcessor:
             cluster_label = doc.get("summary_embedding_cluster_label")
             if cluster_label is not None and cluster_label != -1:
                 cluster_map.setdefault(cluster_label, []).append(doc)
+
+        title_to_event_id = {}
+        
+        # 获取已有的标题到event_id的映射
+        existing_events = self.collection.find(
+            {"event_title": {"$exists": True}, "event_id": {"$exists": True}},
+            {"event_title": 1, "event_id": 1}
+        )
+        for event in existing_events:
+            title_to_event_id[event["event_title"]] = event["event_id"]
 
         # 逐个处理簇
         for cluster_label, cluster_docs in cluster_map.items():
@@ -286,8 +297,12 @@ class InfoProcessor:
                 logger.warning(f"GPT 未返回标题，跳过簇 {cluster_label}。")
                 continue
 
-            # 生成同一个簇的唯一事件ID
-            event_id = str(uuid.uuid4())
+            # 如果标题已存在，使用已有的event_id，否则生成新的
+            if title in title_to_event_id:
+                event_id = title_to_event_id[title]
+            else:
+                event_id = str(uuid.uuid4())
+                title_to_event_id[title] = event_id
 
             # 将同一个簇里的所有文档都写入相同的 event_title、event_id
             update_result = self.collection.update_many(
