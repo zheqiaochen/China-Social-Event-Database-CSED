@@ -118,7 +118,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, nextTick, defineExpose } from 'vue'
+import { ref, onMounted, computed, nextTick, defineExpose, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { CaretTop, ChatRound, Position, ArrowLeft, Link } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
@@ -127,7 +127,7 @@ import { useWindowSize } from '@vueuse/core'
 /**
  * ------------------ 核心状态 ------------------
  */
-// 存放从后端获取的“全部事件”
+// 存放从后端获取的"全部事件"
 const originalEvents = ref([])
 
 // 当前在前端显示的事件（基于 originalEvents 过滤/搜索）
@@ -169,8 +169,11 @@ const formatNumber = (num) => {
 
 // 获取事件时间(这里假定事件时间以 posts[0].created_at 为参考)
 const getEventTime = (event) => {
-  if (!event.posts?.length) return 0
-  return new Date(event.posts[0].created_at).getTime()
+  if (!event?.posts?.length) return 0
+  const timestamp = event.posts[0].created_at
+  if (!timestamp) return 0
+  const time = new Date(timestamp).getTime()
+  return isNaN(time) ? 0 : time
 }
 
 /**
@@ -202,36 +205,52 @@ const fetchAllEvents = async () => {
       throw new Error('接口返回数据格式有误')
     }
 
-    // 先对事件做一次处理和排序
+    // 处理所有事件
     const processed = data.events.map(evt => {
-      // 排序帖子：按时间从新到旧
-      evt.posts = (evt.posts || [])
-        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      // 确保 posts 存在且是数组
+      evt.posts = Array.isArray(evt.posts) ? evt.posts : []
+      
+      // 为每个帖子添加时间戳
+      evt.posts = evt.posts
+        .filter(p => p && p.created_at) // 过滤无效帖子
         .map(p => ({
           ...p,
-          // 如果后端没给 url，则自行拼接
+          timestamp: new Date(p.created_at).getTime(),
           url: p.url || `https://www.weibo.com/detail/${p.id}`
         }))
+        .sort((a, b) => b.timestamp - a.timestamp) // 帖子按时间倒序
+
+      // 为事件添加最新时间戳（用于排序）
+      evt.latestTimestamp = evt.posts[0]?.timestamp || 0
+      
       return evt
     })
 
-    // 存放处理后的事件列表
+    // 存储原始数据
     originalEvents.value = processed
 
-    // 做过滤和排序（帖子数 >= 6）
-    const filtered = originalEvents.value
-      .filter(e => e.posts?.length >= 6)
-      .sort((a, b) => getEventTime(b) - getEventTime(a))
+    // 过滤并排序显示的事件
+    const filtered = processed
+      .filter(e => e.posts.length >= 6) // 只保留帖子数 >= 6 的事件
+      .sort((a, b) => {
+        // 按最新帖子时间戳排序
+        if (a.latestTimestamp === b.latestTimestamp) {
+          return String(a._id).localeCompare(String(b._id))
+        }
+        return b.latestTimestamp - a.latestTimestamp
+      })
 
     displayedEvents.value = filtered
 
-    // 若有事件，则默认选中第一个
+    // 若有事件，选中第一个
     if (displayedEvents.value.length) {
-      activeEvent.value = displayedEvents.value[0]._id
-      activeEventPosts.value = displayedEvents.value[0].posts
+      const firstEvent = displayedEvents.value[0]
+      activeEvent.value = firstEvent._id
+      activeEventPosts.value = firstEvent.posts
     }
 
   } catch (err) {
+    console.error('加载事件失败:', err)
     error.value = `加载数据失败：${err.message}`
     ElMessage.error(error.value)
   } finally {
@@ -316,12 +335,19 @@ onMounted(() => {
   // 拉取所有事件
   fetchAllEvents()
 
-  // 设置初始高度
+  // 优化高度计算
   const updateTimelineHeight = () => {
-    timelineHeight.value = `calc(${document.documentElement.clientHeight}px - 100px)`
+    const windowHeight = window.innerHeight || document.documentElement.clientHeight
+    timelineHeight.value = `${windowHeight - 100}px`
   }
+  
   updateTimelineHeight()
   window.addEventListener('resize', updateTimelineHeight)
+  
+  // 清理事件监听
+  onUnmounted(() => {
+    window.removeEventListener('resize', updateTimelineHeight)
+  })
 })
 </script>
 
@@ -329,9 +355,10 @@ onMounted(() => {
 /* ---------- 主要容器布局 ---------- */
 .event-timeline {
   flex: 1;
-  overflow: hidden;
+  overflow: hidden;  /* 改为 visible */
   padding: 10px;
   box-sizing: border-box;
+  height: 100%;  /* 确保有高度 */
 }
 
 .timeline-container {
@@ -339,6 +366,7 @@ onMounted(() => {
   display: flex;
   background: #fff;
   border-radius: 8px;
+  overflow: hidden;  /* 添加此行 */
 }
 
 /* 左侧事件列表 */
@@ -346,8 +374,10 @@ onMounted(() => {
   width: 310px;
   height: 100%;
   overflow-y: auto;
+  overflow-x: hidden;  /* 添加此行 */
   border-right: 1px solid #e4e7ed;
   padding: 10px;
+  -webkit-overflow-scrolling: touch;  /* 添加此行，优化移动端滚动 */
 }
 
 .event-item {
@@ -401,8 +431,11 @@ onMounted(() => {
 /* 右侧内容区域 */
 .content-area {
   flex: 1;
+  height: 100%;  /* 添加此行 */
   padding: 20px 25px;
   overflow-y: auto;
+  overflow-x: hidden;  /* 添加此行 */
+  -webkit-overflow-scrolling: touch;  /* 添加此行 */
 }
 
 .event-content {

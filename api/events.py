@@ -10,20 +10,13 @@ load_dotenv()
  
 # 数据库连接
 def connect_to_db():
-    client = MongoClient(os.getenv('MONGO_URI'))
+    client = MongoClient('mongodb+srv://REDACTED@cluster0.cutgb.mongodb.net/')
     return client['weibo']['weibo']
 
 # HTTP 处理类
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
-            # 解析分页参数
-            query_params = self.path.split('?')[1] if '?' in self.path else ''
-            query_dict = {k: v for k, v in (item.split('=') for item in query_params.split('&') if '=' in item)}
-            page = int(query_dict.get('page', 1))  # 默认为第一页
-            page_size = int(query_dict.get('page_size', 10))  # 默认为每页10条
-            skip_value = (page - 1) * page_size
-
             # 连接数据库
             collection = connect_to_db()
 
@@ -55,14 +48,7 @@ class handler(BaseHTTPRequestHandler):
                             }
                         }
                     }
-                },
-                {
-                    "$match": {
-                        "$expr": {"$gte": [{"$size": "$posts"}, 6]}  # 只保留帖子数量 >= 6 的事件
-                    }
-                },
-                {"$skip": skip_value},  # 跳过前面的文档
-                {"$limit": page_size}  # 仅返回当前页的数据
+                }
             ]
 
             # 查询数据
@@ -76,9 +62,7 @@ class handler(BaseHTTPRequestHandler):
 
             response = {
                 "events": documents,
-                "page": page,
-                "page_size": page_size,
-                "total_events": collection.count_documents({"summary_embedding_cluster_label": {"$exists": True, "$ne": -1}})
+                "total_events": len(documents)  # 直接返回实际事件数量
             }
             self.wfile.write(json_util.dumps(response).encode())
 
