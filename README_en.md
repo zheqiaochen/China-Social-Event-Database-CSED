@@ -44,16 +44,16 @@ cd China-Social-Event-Database-CSED
 
 # Install dependencies
 pip install -r requirements.txt
-npm install
+npm run install
 ```
 
 #### Step 2
+Create a .env file in the root directory and configure the mongodb address (default is mongodb://localhost:27017) and openai api key, format as follows:
 
-Configure backend/config.json, replace MONGO_URI and API_KEY
-
-Configure frontend/server.py, replace MONGO_URI
-
-Configure api/events.py, replace MONGO_URI
+```
+MONGO_URI=mongodb://localhost:27017/
+API_KEY=sk-...
+```
 
 #### Step 3
 ```bash

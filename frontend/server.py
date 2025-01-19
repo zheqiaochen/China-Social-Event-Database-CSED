@@ -5,6 +5,16 @@ from pymongo import MongoClient
 from datetime import datetime
 import uvicorn
 from fastapi.responses import FileResponse
+from dotenv import load_dotenv
+import os
+
+# 加载环境变量
+# 获取当前文件的目录
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# 获取项目根目录路径（当前目录的父目录）
+root_dir = os.path.dirname(current_dir)
+# 加载根目录下的 .env 文件
+load_dotenv(os.path.join(root_dir, '.env'))
 
 app = FastAPI()
 
@@ -18,7 +28,7 @@ app.add_middleware(
 )
 
 # MongoDB 连接
-client = MongoClient('你MongoDB的连接URI')
+client = MongoClient(os.getenv('MONGO_URI'))
 db = client['weibo']
 collection = db['weibo']
 

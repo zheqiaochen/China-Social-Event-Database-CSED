@@ -2,10 +2,12 @@
   <div class="app" :style="{ height: appHeight }">
     <header class="header">
       <div class="header-content">
+        <!-- 标题可点击返回首页 -->
         <router-link to="/" class="title-link">
           <h1 class="title">中国社会事件数据库</h1>
         </router-link>
         <div class="header-right">
+          <!-- 搜索输入框：每次输入都会调用 handleSearch -->
           <el-input
             v-model="searchText"
             placeholder="搜索事件..."
@@ -20,6 +22,8 @@
         </div>
       </div>
     </header>
+
+    <!-- 如果路由是 /about，就显示 About，其它路由显示事件时间线组件 -->
     <router-view v-if="$route.path === '/about'" />
     <EventTimeline v-else ref="eventTimeline" />
   </div>
@@ -32,9 +36,9 @@ import EventTimeline from './components/EventTimeline.vue'
 
 const searchText = ref('')
 const eventTimeline = ref(null)
-const appHeight = ref('100vh')
 
-// 添加移动端高度适配
+// 适配移动端高度
+const appHeight = ref('100vh')
 onMounted(() => {
   const setAppHeight = () => {
     appHeight.value = `${document.documentElement.clientHeight}px`
@@ -43,6 +47,7 @@ onMounted(() => {
   window.addEventListener('resize', setAppHeight)
 })
 
+// 每当输入框变化，就调用子组件的 filterEvents
 const handleSearch = (value) => {
   if (eventTimeline.value) {
     eventTimeline.value.filterEvents(value)
@@ -95,7 +100,6 @@ const handleSearch = (value) => {
   font-size: 16px;
   transition: color 0.3s;
 }
-
 .nav-link:hover {
   color: #2f2f2f;
 }
@@ -105,7 +109,6 @@ const handleSearch = (value) => {
   color: inherit;
   transition: opacity 0.3s;
 }
-
 .title-link:hover {
   opacity: 0.8;
 }
@@ -147,4 +150,4 @@ const handleSearch = (value) => {
 :root {
   --el-color-primary: #2f2f2f; 
 }
-</style> 
+</style>

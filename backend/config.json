@@ -1,7 +1,4 @@
 {
-    "MONGO_URI": "你MongoDB的连接URI",
-
-    "API_KEY": "你GPT的API密钥",
     "CHAT_MODEL": "gpt-4o-mini",
     "EMBED_MODEL": "text-embedding-3-small",
     "TEMPERATURE": 0,

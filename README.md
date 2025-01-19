@@ -48,16 +48,17 @@ cd China-Social-Event-Database-CSED
 pip install -r requirements.txt
 
 # 安装依赖
-npm install
+npm run install
 ```
 
 #### 第二步
 
-配置backend/config.json，替换MONGO_URI和API_KEY
+在根目录新建一个.env文件，并且输入mongodb的连接地址和openai的api密钥，格式如下：
 
-配置frontend/server.py，替换MONGO_URI
-
-配置api/events.py，替换MONGO_URI
+```
+MONGO_URI=mongodb://localhost:27017/
+API_KEY=sk-...
+```
 
 #### 第三步
 ```bash

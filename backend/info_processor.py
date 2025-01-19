@@ -5,12 +5,16 @@ import uuid
 import sys
 import datetime
 import json
+import os
+from dotenv import load_dotenv
 from tqdm import tqdm
 from pymongo import MongoClient
 from openai import OpenAI
 
-logger = logging.getLogger(__name__)
+load_dotenv()
 
+logger = logging.getLogger(__name__)
+ 
 class InfoProcessor:
     """
     从数据库取数据、调用OpenAI API获得结果，然后写回数据库
@@ -33,7 +37,7 @@ class InfoProcessor:
         """
         # 初始化数据库连接
         try:
-            self.mongo_client = MongoClient(config['MONGO_URI'])
+            self.mongo_client = MongoClient(os.getenv('MONGO_URI'))
             self.db = self.mongo_client['weibo']
             self.collection = self.db['weibo']
             logger.info('MongoDB连接成功')
@@ -128,7 +132,11 @@ class InfoProcessor:
                     summary_content = lines[0].split('：')[1].strip() if len(lines) > 0 else ""
                     response_value = int(lines[1].split('：')[1].strip()) if len(lines) > 1 else 0
                     org_name = lines[2].split('：')[1].strip() if len(lines) > 2 else ""
+                except Exception as e:
+                    logger.error(f"解析返回结果失败: {e}, 原始返回: {summary_text}")
+                    continue
 
+                try:
                     self.collection.update_one(
                         {"_id": doc["_id"]},
                         {"$set": {
@@ -139,10 +147,9 @@ class InfoProcessor:
                     )
                     updated_count += 1
                 except Exception as e:
-                    logger.error(f"解析GPT返回结果失败: {e}, 原始返回: {summary_text}")
+                    logger.error(f"数据库更新失败: {e}, 文档ID: {doc['_id']}")
                     continue
-
-        logger.info(f"共处理并更新了 {updated_count} 篇文档的摘要和政府回应。")
+                logger.info(f"共处理并更新了 {updated_count} 篇文档的摘要和政府回应。")
 
 
     def summary_embedding(self):
