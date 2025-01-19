@@ -10,7 +10,7 @@ load_dotenv()
  
 # 数据库连接
 def connect_to_db():
-    client = MongoClient('mongodb+srv://REDACTED@cluster0.cutgb.mongodb.net/')
+    client = MongoClient(os.getenv('MONGO_URI'))
     return client['weibo']['weibo']
 
 # HTTP 处理类
