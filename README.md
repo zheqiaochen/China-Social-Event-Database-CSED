@@ -53,7 +53,7 @@ npm run install
 
 #### 第二步
 
-在根目录新建一个.env文件，并且输入mongodb的连接地址和openai的api密钥，格式如下：
+在根目录新建一个.env文件，并且输入mongodb的连接地址（在本地的话默认为mongodb://localhost:27017/）和openai的api密钥，格式如下：
 
 ```
 MONGO_URI=mongodb://localhost:27017/
