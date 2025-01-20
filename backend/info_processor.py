@@ -11,7 +11,12 @@ from tqdm import tqdm
 from pymongo import MongoClient
 from openai import OpenAI
 
-load_dotenv()
+# 获取当前文件的目录
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# 获取项目根目录路径（当前目录的父目录）
+root_dir = os.path.dirname(current_dir)
+# 加载根目录下的 .env 文件
+load_dotenv(os.path.join(root_dir, '.env'))
 
 logger = logging.getLogger(__name__)
  
@@ -46,7 +51,7 @@ class InfoProcessor:
             raise e
 
         # 初始化OpenAI客户端
-        self.client = OpenAI(api_key=config['API_KEY'])
+        self.client = OpenAI(api_key=os.getenv('API_KEY'))
         self.chat_model = config['CHAT_MODEL']
         self.embed_model = config['EMBED_MODEL']
         self.temperature = config['TEMPERATURE']
@@ -85,7 +90,7 @@ class InfoProcessor:
             return []
 
     def delete_old(self):
-        # 计算7天前的时间，并转换为 ISO 8601 格式
+        # 计算时间，并转换为 ISO 8601 格式
         days_ago = (datetime.datetime.utcnow() - datetime.timedelta(days=self.delete_old_days)).isoformat()
 
         # 删除条件

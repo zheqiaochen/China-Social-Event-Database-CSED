@@ -5,8 +5,9 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-
+from dotenv import load_dotenv
 from info_processor import InfoProcessor
+
 
 logging.basicConfig(
     level=logging.INFO,
