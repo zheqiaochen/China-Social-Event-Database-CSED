@@ -35,23 +35,29 @@ collection = db['weibo']
 # API 路由 - 注意：必须在静态文件挂载之前定义所有API路由
 @app.get("/api/events")
 async def get_events():
+    """
+    原先是用 event_id 做分组并过滤，这里改为用 summary_embedding_cluster_label 做分组。
+    如果 event_title 等字段还存在并需要，则保留。否则可以去掉相关过滤。
+    """
     try:
-        # 修改 pipeline，添加 summary_embedding_cluster_label 的过滤条件
         pipeline = [
             {
                 "$match": {
-                    "event_id": {"$exists": True},
                     "event_title": {"$exists": True},
                     "text": {"$exists": True},
                     "summary_embedding_cluster_label": {"$exists": True, "$ne": -1}
                 }
             },
             {
-                "$sort": {"created_at": -1}
+                "$sort": {
+                    "created_at": -1,
+                    "_id": 1
+                }
             },
             {
                 "$group": {
-                    "_id": "$event_id",
+                    # 改为按 summary_embedding_cluster_label 分组
+                    "_id": "$summary_embedding_cluster_label",
                     "event_title": {"$first": "$event_title"},
                     "posts": {
                         "$push": {
@@ -75,7 +81,7 @@ async def get_events():
             print("没有找到任何事件数据")
             return {"events": []}
             
-        print(f"成功获取到 {len(documents)} 个事件")
+        print(f"成功获取到 {len(documents)} 个事件（基于 summary_embedding_cluster_label）")
         return {"events": documents}
         
     except Exception as e:
@@ -84,8 +90,10 @@ async def get_events():
 
 @app.get("/api/test")
 async def test_connection():
+    """
+    测试数据库连接
+    """
     try:
-        # 测试数据库连接
         count = collection.count_documents({})
         return {
             "status": "success",
@@ -99,22 +107,27 @@ async def test_connection():
 
 @app.get("/api/valid_clusters")
 async def get_valid_clusters():
+    """
+    原先是排除 summary_embedding_cluster_label = -1，并且用 event_id 做过滤和分组。
+    现在改为仅用 summary_embedding_cluster_label 做过滤和分组。
+    """
     try:
-        # 查询条件：排除 summary_embedding_cluster_label 为 -1 的文档
         pipeline = [
             {
                 "$match": {
+                    # 删除对 event_id 的要求
                     "summary_embedding_cluster_label": {"$exists": True, "$ne": -1},
-                    "event_id": {"$exists": True},
+                    # 如果还需要保留 event_title，则可以保留；否则可去掉
                     "event_title": {"$exists": True}
                 }
             },
             {
-                "$sort": {"created_at": -1}  # 按时间倒序排序
+                "$sort": {"created_at": -1}
             },
             {
                 "$group": {
-                    "_id": "$event_id",
+                    # 原先 "_id": "$event_id"，改为用 summary_embedding_cluster_label
+                    "_id": "$summary_embedding_cluster_label",
                     "event_title": {"$first": "$event_title"},
                     "cluster_label": {"$first": "$summary_embedding_cluster_label"},
                     "posts": {
@@ -134,7 +147,7 @@ async def get_valid_clusters():
             print("没有找到任何有效聚类数据")
             return {"clusters": []}
             
-        print(f"成功获取到 {len(documents)} 个有效聚类")
+        print(f"成功获取到 {len(documents)} 个有效聚类（基于 summary_embedding_cluster_label）")
         return {"clusters": documents}
         
     except Exception as e:
@@ -150,6 +163,5 @@ async def not_found_handler(request, exc):
     return FileResponse("dist/index.html")
 
 if __name__ == "__main__":
-    import uvicorn
     print("启动服务器...")
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    uvicorn.run(app, host="0.0.0.0", port=8000)

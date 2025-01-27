@@ -15,7 +15,7 @@ Most social media or political science studies seem to focus more on specific ev
 ### Features:
 
 1. Automatically aggregates information daily and displays it in a timeline format.
-2. ~~Government response detection, entries with yellow stars contain government responses.~~ (This feature exists in code but is not displayed in frontend)
+2. ~~Government response detection, entries with yellow stars contain government responses.~~ (This feature exists in code but no longer displayed in frontend)
 3. Click on post titles to jump to original Weibo posts.
 4. Good support for both mobile and desktop platforms.
 
@@ -30,8 +30,8 @@ Most social media or political science studies seem to focus more on specific ev
 
 Four preparations are needed before deployment:
 1. Find a Weibo crawler software and complete related configuration. I use [weibo-crawler](https://github.com/dataabc/weibo-crawler). Configure userlist and config.json and crawl the data you need
-2. Install Node.js and npm locally
-3. Install MongoDB locally
+2. Install Node.js and npm
+3. Install MongoDB
 4. Get your own OpenAI API key
 
 #### Step 1
@@ -73,6 +73,9 @@ curl -X POST http://0.0.0.0:8888/api/cluster/titles
 
 # Run the following command to delete data (default deletes data older than 7 days that failed to be clustered)
 curl -X POST http://0.0.0.0:8888/api/process/delete_old
+
+# Run the following command to archive inactive events (default archives events inactive for more than 7 days)
+curl -X POST http://0.0.0.0:8888/api/process/archive_inactive_events
 
 # After running, you can start the frontend to see the effect
 npm run dev

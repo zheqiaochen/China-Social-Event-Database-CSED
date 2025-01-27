@@ -103,5 +103,14 @@ async def generate_titles():
         logger.error(f"标题生成错误: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/process/archive_inactive_events")
+async def archive_inactive_events():
+    try:
+        info_processor.archive_inactive_events()
+        return ProcessResponse(status="success", message="已归档事件完成")
+    except Exception as e:
+        logger.error(f"已归档事件错误: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8888)

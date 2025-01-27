@@ -28,7 +28,6 @@ class handler(BaseHTTPRequestHandler):
             pipeline = [
                 {
                     "$match": {
-                        "event_id": {"$exists": True},
                         "event_title": {"$exists": True},
                         "text": {"$exists": True},
                         "summary_embedding_cluster_label": {"$exists": True, "$ne": -1}
@@ -37,7 +36,7 @@ class handler(BaseHTTPRequestHandler):
                 {"$sort": {"created_at": -1}},  # 按创建时间倒序排序
                 {
                     "$group": {
-                        "_id": "$event_id",
+                        "_id": "$summary_embedding_cluster_label",
                         "event_title": {"$first": "$event_title"},
                         "posts": {
                             "$push": {
