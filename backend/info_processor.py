@@ -201,7 +201,7 @@ class InfoProcessor:
         使用HDBSCAN进行聚类，并更新文档的 summary_embedding_cluster_label 字段
         """
         documents = list(self.collection.find({
-            "summary_embedding": {"$exists": True}
+            "summary_embedding": {"$exists": True},
             "archived": {"$ne": 1}
         }))
         if not documents:
