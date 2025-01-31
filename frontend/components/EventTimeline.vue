@@ -5,7 +5,7 @@
     <div v-if="loading && displayedEvents.length === 0" class="timeline-container skeleton-container">
       <!-- 左侧事件列表骨架 -->
       <div class="event-list">
-        <div v-for="i in 5" :key="i" class="event-item skeleton">
+        <div v-for="i in 8" :key="i" class="event-item skeleton">
           <div class="skeleton-time"></div>
           <div class="skeleton-title"></div>
         </div>
@@ -13,7 +13,7 @@
       <!-- 右侧内容区域骨架 -->
       <div class="content-area">
         <div class="event-content">
-          <div v-for="i in 3" :key="i" class="skeleton-post">
+          <div v-for="i in 8" :key="i" class="skeleton-post">
             <div class="skeleton-header">
               <div class="skeleton-name"></div>
             </div>
@@ -52,21 +52,30 @@
           :key="event._id"
           class="event-item"
           :class="{ 
-            active: activeEvent === event._id,
-            'with-dot': activeEvent === event._id && isDesktop
+            active: activeEvent === event._id
           }"
           @click="handleEventSelect(event._id)"
         >
-          <!-- 显示事件时间（以 posts[0] 为参考）-->
+          <!-- 以首条帖子时间做粗略显示 -->
           <div class="event-time">{{ formatTime(event.posts?.[0]?.created_at) }}</div>
-          <div class="event-title-container">
-            <div class="event-title">
-              {{ event.event_title || '未命名事件' }}
-            </div>
-            <div class="post-count">
-              {{ event.posts?.length || 0 }}
+          <div class="event-info">
+            <div class="latest-post-time">{{ formatTime(event.latest_post?.created_at) }}</div>
+            <div class="title-row">
+              <div class="event-title">{{ event.event_title }}</div>
+              <div class="post-count">{{ event.posts_count }} 条</div>
             </div>
           </div>
+        </div>
+        
+        <!-- 加载状态提示 -->
+        <div v-if="loadingMore" class="loading-more">
+          <el-icon class="loading"><Loading /></el-icon>
+          正在加载更多...
+        </div>
+        
+        <!-- 无更多数据提示 -->
+        <div v-if="!hasMore && displayedEvents.length > 0" class="no-more">
+          没有更多数据了
         </div>
       </div>
 
@@ -120,31 +129,32 @@
 <script setup>
 import { ref, onMounted, computed, nextTick, defineExpose, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { CaretTop, ChatRound, Position, ArrowLeft, Link } from '@element-plus/icons-vue'
+import { CaretTop, ChatRound, Position, ArrowLeft, Link, Loading } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 import { useWindowSize } from '@vueuse/core'
+import _ from 'lodash'
+
+/* 
+  1) 修正：定义 loadingMore / hasMore，避免模板中报错
+  2) 日后如需实现“下拉/滚动加载更多”功能，可配合接口逻辑改动
+*/
+const loadingMore = ref(false)
+const hasMore = ref(false)
 
 /**
  * ------------------ 核心状态 ------------------
  */
-// 存放从后端获取的"全部事件"
 const originalEvents = ref([])
-
-// 当前在前端显示的事件（基于 originalEvents 过滤/搜索）
 const displayedEvents = ref([])
-
-// 是否加载中 / 错误信息
 const loading = ref(false)
 const error = ref(null)
-
-// 当前选中的事件 ID 及其帖子
 const activeEvent = ref(null)
 const activeEventPosts = ref([])
 
 // 移动端与桌面端判断
 const { width: screenWidth } = useWindowSize()
 const isDesktop = computed(() => screenWidth.value >= 768)
-const showContent = ref(false) // 移动端：是否进入内容视图
+const showContent = ref(false)
 
 // 时间线容器高度
 const timelineHeight = ref('calc(100vh - 100px)')
@@ -152,13 +162,27 @@ const timelineHeight = ref('calc(100vh - 100px)')
 /**
  * ------------------ 工具方法 ------------------
  */
-// 时间格式化
+
+// 修正后的时间格式化：使用 dayjs 判断是否今天/昨天，否则显示完整日期
 const formatTime = (timestamp) => {
   if (!timestamp) return ''
-  return dayjs(timestamp).format('YYYY-MM-DD HH:mm')
+  const d = dayjs(timestamp)
+  const today = dayjs()
+  const yesterday = dayjs().subtract(1, 'day')
+
+  if (d.isSame(today, 'day')) {
+    // 同一天
+    return `今天 ${d.format('HH:mm')}`
+  } else if (d.isSame(yesterday, 'day')) {
+    // 昨天
+    return `昨天 ${d.format('HH:mm')}`
+  } else {
+    // 其他情况显示 月/日 HH:mm
+    // 如果需要跨年显示，可以改成：d.format('YYYY年M月D日 HH:mm')
+    return d.format('M月D日 HH:mm')
+  }
 }
 
-// 数字格式化
 const formatNumber = (num) => {
   if (!num) return '0'
   if (num >= 10000) {
@@ -167,73 +191,31 @@ const formatNumber = (num) => {
   return num.toString()
 }
 
-// 获取事件时间(这里假定事件时间以 posts[0].created_at 为参考)
-const getEventTime = (event) => {
-  if (!event?.posts?.length) return 0
-  const timestamp = event.posts[0].created_at
-  if (!timestamp) return 0
-  const time = new Date(timestamp).getTime()
-  return isNaN(time) ? 0 : time
-}
-
-/**
- * 打开微博链接
- */
-const openWeiboLink = (post) => {
-  if (!post.url) return
-  window.open(post.url, '_blank')
-}
-
 /**
  * ------------------ 核心逻辑 ------------------
  */
-
-/**
- * 一次性加载所有事件，存到 originalEvents
- * 然后过滤出「帖子数 >= 6」的事件，并按时间倒序排序存到 displayedEvents
- */
-const fetchAllEvents = async () => {
+// 获取事件列表
+const fetchEvents = async () => {
   loading.value = true
   error.value = null
   try {
     const resp = await fetch('/api/events')
-    if (!resp.ok) {
-      throw new Error(`HTTP error! status: ${resp.status}`)
-    }
+    if (!resp.ok) throw new Error(`HTTP error! status: ${resp.status}`)
     const data = await resp.json()
-    if (!data.events) {
-      throw new Error('接口返回数据格式有误')
-    }
-
-    // 处理所有事件
-    const processed = data.events.map(evt => {
-      // 确保 posts 存在且是数组
-      evt.posts = Array.isArray(evt.posts) ? evt.posts : []
-      
-      // 为每个帖子添加时间戳
-      evt.posts = evt.posts
-        .filter(p => p && p.created_at) // 过滤无效帖子
-        .map(p => ({
-          ...p,
-          timestamp: new Date(p.created_at).getTime(),
-          url: p.url || `https://www.weibo.com/detail/${p.id}`
-        }))
-        .sort((a, b) => b.timestamp - a.timestamp) // 帖子按时间倒序
-
-      // 为事件添加最新时间戳（用于排序）
-      evt.latestTimestamp = evt.posts[0]?.timestamp || 0
-      
-      return evt
-    })
+    
+    // 处理事件数据
+    const processed = data.events.map(evt => ({
+      ...evt,
+      latestTimestamp: evt.latest_post ? dayjs(evt.latest_post.created_at).valueOf() : 0
+    }))
 
     // 存储原始数据
     originalEvents.value = processed
 
-    // 过滤并排序显示的事件
+    // 过滤并排序显示的事件，这里仍然保留“posts_count >= 6”的逻辑
     const filtered = processed
-      .filter(e => e.posts.length >= 6) // 只保留帖子数 >= 6 的事件
+      .filter(e => e.posts_count >= 6)
       .sort((a, b) => {
-        // 按最新帖子时间戳排序
         if (a.latestTimestamp === b.latestTimestamp) {
           return String(a._id).localeCompare(String(b._id))
         }
@@ -242,11 +224,11 @@ const fetchAllEvents = async () => {
 
     displayedEvents.value = filtered
 
-    // 若有事件，选中第一个
-    if (displayedEvents.value.length) {
-      const firstEvent = displayedEvents.value[0]
+    // 若有事件，默认选中第一个并加载其帖子
+    if (filtered.length) {
+      const firstEvent = filtered[0]
       activeEvent.value = firstEvent._id
-      activeEventPosts.value = firstEvent.posts
+      await fetchEventPosts(firstEvent._id)
     }
 
   } catch (err) {
@@ -258,13 +240,35 @@ const fetchAllEvents = async () => {
   }
 }
 
-/**
- * 切换选中事件
- */
+// 获取特定事件的帖子
+const fetchEventPosts = async (eventId) => {
+  try {
+    const resp = await fetch(`/api/event_posts/${eventId}`)
+    if (!resp.ok) throw new Error(`HTTP error! status: ${resp.status}`)
+    const data = await resp.json()
+    
+    // 处理帖子数据
+    activeEventPosts.value = data.posts.map(post => ({
+      ...post,
+      timestamp: dayjs(post.created_at).valueOf(),
+      // 将微博链接放到这里，供 openWeiboLink 使用
+      url: `https://www.weibo.com/detail/${post.id}`
+    }))
+    // 如果需要从新到旧，可用 sort((a,b) => b.timestamp - a.timestamp)
+    // 若想从旧到新则取 a.timestamp - b.timestamp
+    activeEventPosts.value.sort((a, b) => b.timestamp - a.timestamp)
+    
+  } catch (err) {
+    console.error('加载帖子失败:', err)
+    ElMessage.error(`加载帖子失败：${err.message}`)
+    activeEventPosts.value = []
+  }
+}
+
+// 点击选择事件
 const handleEventSelect = async (eventId) => {
   activeEvent.value = eventId
-  const event = displayedEvents.value.find(e => e._id === eventId)
-  activeEventPosts.value = event?.posts || []
+  await fetchEventPosts(eventId)
 
   // 移动端 -> 显示内容区域
   if (!isDesktop.value) {
@@ -279,63 +283,47 @@ const handleEventSelect = async (eventId) => {
   }
 }
 
-/**
- * 移动端 -> 返回列表
- */
+// 移动端返回列表
 const handleBack = () => {
   showContent.value = false
 }
 
-/**
- * ------------------ 搜索逻辑：本地搜索 ------------------
- * 父组件通过 ref 调用 filterEvents
- */
-const filterEvents = (searchText) => {
-  if (!originalEvents.value.length) return
-
-  // 若搜索文本为空，恢复正常列表
-  if (!searchText) {
-    displayedEvents.value = originalEvents.value
-      .filter(e => e.posts?.length >= 6)
-      .sort((a, b) => getEventTime(b) - getEventTime(a))
-    return
+// 修正：定义 openWeiboLink，用新标签打开微博详情页
+const openWeiboLink = (post) => {
+  if (post && post.url) {
+    window.open(post.url, '_blank')
   }
-
-  // 搜索标题或帖子文本中包含关键字
-  const lowerText = searchText.toLowerCase()
-  const filtered = originalEvents.value.filter(event => {
-    // 帖子数要>=6
-    if ((event.posts?.length || 0) < 6) return false
-
-    // 标题匹配 or 帖子文本匹配
-    const inTitle = (event.event_title || '').toLowerCase().includes(lowerText)
-    const inPosts = event.posts.some(post =>
-      (post.text || '').toLowerCase().includes(lowerText)
-    )
-    return (inTitle || inPosts)
-  })
-
-  // 再按时间排序
-  filtered.sort((a, b) => getEventTime(b) - getEventTime(a))
-
-  displayedEvents.value = filtered
 }
 
 /**
- * ------------------ 暴露给父组件的方法 ------------------
+ * ------------------ 搜索逻辑 ------------------
  */
-defineExpose({
-  filterEvents
-})
+const filterEvents = (searchText) => {
+  if (!originalEvents.value.length) return
+  
+  if (!searchText) {
+    displayedEvents.value = originalEvents.value
+      .filter(e => e.posts_count >= 6)
+      .sort((a, b) => b.latestTimestamp - a.latestTimestamp)
+    return
+  }
+  
+  const lowerText = searchText.toLowerCase()
+  const filtered = originalEvents.value
+    .filter(event => {
+      if (event.posts_count < 6) return false
+      return event.event_title.toLowerCase().includes(lowerText)
+    })
+    .sort((a, b) => b.latestTimestamp - a.latestTimestamp)
+  
+  displayedEvents.value = filtered
+}
 
-/**
- * ------------------ 生命周期函数 ------------------
- */
+defineExpose({ filterEvents, handleBack })
+
 onMounted(() => {
-  // 拉取所有事件
-  fetchAllEvents()
-
-  // 优化高度计算
+  fetchEvents()
+  
   const updateTimelineHeight = () => {
     const windowHeight = window.innerHeight || document.documentElement.clientHeight
     timelineHeight.value = `${windowHeight - 100}px`
@@ -343,11 +331,10 @@ onMounted(() => {
   
   updateTimelineHeight()
   window.addEventListener('resize', updateTimelineHeight)
-  
-  // 清理事件监听
-  onUnmounted(() => {
-    window.removeEventListener('resize', updateTimelineHeight)
-  })
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', updateTimelineHeight)
 })
 </script>
 
@@ -355,10 +342,10 @@ onMounted(() => {
 /* ---------- 主要容器布局 ---------- */
 .event-timeline {
   flex: 1;
-  overflow: hidden;  /* 改为 visible */
+  overflow: hidden; 
   padding: 10px;
   box-sizing: border-box;
-  height: 100%;  /* 确保有高度 */
+  height: 100%; 
 }
 
 .timeline-container {
@@ -366,7 +353,7 @@ onMounted(() => {
   display: flex;
   background: #fff;
   border-radius: 8px;
-  overflow: hidden;  /* 添加此行 */
+  overflow: hidden;
 }
 
 /* 左侧事件列表 */
@@ -374,10 +361,10 @@ onMounted(() => {
   width: 310px;
   height: 100%;
   overflow-y: auto;
-  overflow-x: hidden;  /* 添加此行 */
+  overflow-x: hidden;
   border-right: 1px solid #e4e7ed;
   padding: 10px;
-  -webkit-overflow-scrolling: touch;  /* 添加此行，优化移动端滚动 */
+  -webkit-overflow-scrolling: touch; 
 }
 
 .event-item {
@@ -397,29 +384,46 @@ onMounted(() => {
   margin-bottom: 6px;
 }
 
-.event-title-container {
+.latest-post-time {
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 2px;
+}
+
+.event-info {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.title-row {
+  display: flex;
   justify-content: space-between;
+  align-items: center;
+  width: 100%;
   gap: 8px;
 }
 
 .event-title {
-  flex: 1;
-  font-size: 14px;
+  font-size: 0.9em;
+  font-weight: normal;
+  color: var(--el-text-color-primary);
   line-height: 1.4;
+  flex: 1;
+  margin-right: 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .post-count {
-  font-size: 12px;
+  font-size: 0.8em;
   color: #909399;
   background-color: #f4f4f5;
-  padding: 2px 6px;
+  padding: 2px 7px;
   border-radius: 10px;
-  min-width: 20px;
+  white-space: nowrap;
   text-align: center;
 }
 
@@ -431,11 +435,11 @@ onMounted(() => {
 /* 右侧内容区域 */
 .content-area {
   flex: 1;
-  height: 100%;  /* 添加此行 */
+  height: 100%;
   padding: 20px 25px;
   overflow-y: auto;
-  overflow-x: hidden;  /* 添加此行 */
-  -webkit-overflow-scrolling: touch;  /* 添加此行 */
+  overflow-x: hidden; 
+  -webkit-overflow-scrolling: touch;
 }
 
 .event-content {
@@ -630,4 +634,33 @@ onMounted(() => {
   color: #909399;
   font-size: 16px;
 }
+
+/* 添加加载更多的样式 */
+.loading-more {
+  text-align: center;
+  padding: 15px 0;
+  color: #909399;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.loading-more .loading {
+  animation: rotate 1s linear infinite;
+}
+
+@keyframes rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.no-more {
+  text-align: center;
+  padding: 15px 0;
+  color: #909399;
+  font-size: 14px;
+}
+
 </style>

@@ -32,12 +32,10 @@ client = MongoClient(os.getenv('MONGO_URI'))
 db = client['weibo']
 collection = db['weibo']
 
-# API 路由 - 注意：必须在静态文件挂载之前定义所有API路由
 @app.get("/api/events")
 async def get_events():
     """
-    原先是用 event_id 做分组并过滤，这里改为用 summary_embedding_cluster_label 做分组。
-    如果 event_title 等字段还存在并需要，则保留。否则可以去掉相关过滤。
+    获取事件列表
     """
     try:
         pipeline = [
@@ -48,40 +46,34 @@ async def get_events():
                     "summary_embedding_cluster_label": {"$exists": True, "$ne": -1}
                 }
             },
-            {
-                "$sort": {
-                    "created_at": -1,
-                    "_id": 1
-                }
-            },
+            {"$sort": {"created_at": -1}},
             {
                 "$group": {
-                    # 改为按 summary_embedding_cluster_label 分组
                     "_id": "$summary_embedding_cluster_label",
                     "event_title": {"$first": "$event_title"},
-                    "posts": {
-                        "$push": {
-                            "id": "$id",
-                            "text": "$text",
-                            "screen_name": "$screen_name",
-                            "attitudes_count": "$attitudes_count",
-                            "comments_count": "$comments_count",
-                            "reposts_count": "$reposts_count",
-                            "created_at": "$created_at",
-                            "response": {"$ifNull": ["$response", 0]}
+                    "latest_post": {
+                        "$first": {
+                            "created_at": "$created_at"
                         }
-                    }
+                    },
+                    "earliest_post": {
+                        "$last": {
+                            "created_at": "$created_at"
+                        }
+                    },
+                    "posts_count": {"$sum": 1}
                 }
             }
         ]
         
-        documents = list(collection.aggregate(pipeline))
+        # 关键修正：使用 allowDiskUse=True 时，需在 aggregate() 方法里直接指定，而不是对 list(...) 再调用
+        documents = list(collection.aggregate(pipeline, allowDiskUse=True))
         
         if not documents:
             print("没有找到任何事件数据")
             return {"events": []}
             
-        print(f"成功获取到 {len(documents)} 个事件（基于 summary_embedding_cluster_label）")
+        print(f"成功获取到 {len(documents)} 个事件")
         return {"events": documents}
         
     except Exception as e:
@@ -101,23 +93,20 @@ async def test_connection():
         }
     except Exception as e:
         raise HTTPException(
-            status_code=500, 
+            status_code=500,
             detail=f"MongoDB连接失败: {str(e)}"
         )
 
 @app.get("/api/valid_clusters")
 async def get_valid_clusters():
     """
-    原先是排除 summary_embedding_cluster_label = -1，并且用 event_id 做过滤和分组。
-    现在改为仅用 summary_embedding_cluster_label 做过滤和分组。
+    获取有效的聚类信息，基于 summary_embedding_cluster_label。
     """
     try:
         pipeline = [
             {
                 "$match": {
-                    # 删除对 event_id 的要求
                     "summary_embedding_cluster_label": {"$exists": True, "$ne": -1},
-                    # 如果还需要保留 event_title，则可以保留；否则可去掉
                     "event_title": {"$exists": True}
                 }
             },
@@ -126,7 +115,6 @@ async def get_valid_clusters():
             },
             {
                 "$group": {
-                    # 原先 "_id": "$event_id"，改为用 summary_embedding_cluster_label
                     "_id": "$summary_embedding_cluster_label",
                     "event_title": {"$first": "$event_title"},
                     "cluster_label": {"$first": "$summary_embedding_cluster_label"},
@@ -141,7 +129,8 @@ async def get_valid_clusters():
             }
         ]
         
-        documents = list(collection.aggregate(pipeline))
+        # 关键修正：不要对 list(...) 之后再调用 .allowDiskUse(True)
+        documents = list(collection.aggregate(pipeline, allowDiskUse=True))
         
         if not documents:
             print("没有找到任何有效聚类数据")
@@ -154,10 +143,64 @@ async def get_valid_clusters():
         print(f"获取聚类数据失败: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# 静态文件挂载
-app.mount("/", StaticFiles(directory="dist", html=True, check_dir=False), name="static")
+@app.get("/api/event_posts/{event_id}")
+async def get_event_posts(event_id: int):
+    """
+    根据 summary_embedding_cluster_label（event_id）获取对应帖子
+    """
+    try:
+        print(f"正在获取事件ID: {event_id} 的帖子")
+        
+        pipeline = [
+            {
+                "$match": {
+                    "summary_embedding_cluster_label": event_id
+                }
+            },
+            {"$sort": {"created_at": -1}},
+            {
+                "$project": {
+                    "id": 1,
+                    "text": 1,
+                    "screen_name": 1,
+                    "attitudes_count": 1,
+                    "comments_count": 1,
+                    "reposts_count": 1,
+                    "created_at": 1,
+                    "response": {"$ifNull": ["$response", 0]}
+                }
+            }
+        ]
+        
+        try:
+            posts = list(collection.aggregate(pipeline, allowDiskUse=True))
+            print(f"成功获取到 {len(posts)} 条帖子")
+            
+            # 使用 json_util 处理 MongoDB 的特殊类型
+            json_str = json_util.dumps({"posts": posts})
+            json_data = json.loads(json_str)
+            
+            return JSONResponse(content=json_data)
+            
+        except Exception as db_error:
+            print(f"数据库查询失败: {str(db_error)}")
+            raise db_error
+            
+    except Exception as e:
+        print(f"获取帖子失败: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"获取帖子失败: {str(e)}, 事件ID: {event_id}"
+        )
 
-# 添加一个回退路由处理程序
+# 静态文件挂载；确保 dist 目录中存在 index.html 和相关静态文件
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)  # 获取上一级目录
+dist_path = os.path.join(parent_dir, "dist")  # 指向上一级的 dist 目录
+
+app.mount("/", StaticFiles(directory=dist_path, html=True, check_dir=False), name="static")
+
+# 回退路由处理，将 404 请求重定向到前端 index.html (SPA 场景)
 @app.exception_handler(404)
 async def not_found_handler(request, exc):
     return FileResponse("dist/index.html")

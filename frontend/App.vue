@@ -2,10 +2,10 @@
   <div class="app" :style="{ height: appHeight }">
     <header class="header">
       <div class="header-content">
-        <!-- 标题可点击返回首页 -->
-        <router-link to="/" class="title-link">
+        <!-- 修改标题点击事件 -->
+        <div class="title-link" @click="handleTitleClick">
           <h1 class="title">中国社会事件数据库</h1>
-        </router-link>
+        </div>
         <div class="header-right">
           <!-- 搜索输入框：每次输入都会调用 handleSearch -->
           <el-input
@@ -23,9 +23,16 @@
       </div>
     </header>
 
-    <!-- 如果路由是 /about，就显示 About，其它路由显示事件时间线组件 -->
-    <router-view v-if="$route.path === '/about'" />
-    <EventTimeline v-else ref="eventTimeline" />
+    <!-- 修改路由视图的渲染方式 -->
+    <router-view v-slot="{ Component }">
+      <keep-alive>
+        <component 
+          :is="Component" 
+          ref="eventTimeline"
+          @hook:mounted="handleComponentMounted"
+        />
+      </keep-alive>
+    </router-view>
   </div>
 </template>
 
@@ -33,7 +40,9 @@
 import { ref, onMounted } from 'vue'
 import { Search } from '@element-plus/icons-vue'
 import EventTimeline from './components/EventTimeline.vue'
+import { useRouter } from 'vue-router'
 
+const router = useRouter()
 const searchText = ref('')
 const eventTimeline = ref(null)
 
@@ -46,6 +55,22 @@ onMounted(() => {
   setAppHeight()
   window.addEventListener('resize', setAppHeight)
 })
+
+// 修改标题点击处理函数
+const handleTitleClick = async () => {
+  if (router.currentRoute.value.path !== '/') {
+    await router.push('/')
+    // 强制重新渲染 EventTimeline 组件
+    await router.isReady()
+  }
+  
+  if (window.innerWidth < 768 && eventTimeline.value) {
+    eventTimeline.value.handleBack?.()
+  }
+  
+  searchText.value = ''
+  handleSearch('')
+}
 
 // 每当输入框变化，就调用子组件的 filterEvents
 const handleSearch = (value) => {
@@ -108,6 +133,7 @@ const handleSearch = (value) => {
   text-decoration: none;
   color: inherit;
   transition: opacity 0.3s;
+  cursor: pointer;
 }
 .title-link:hover {
   opacity: 0.8;

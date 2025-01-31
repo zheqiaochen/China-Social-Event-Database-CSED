@@ -60,7 +60,6 @@ class InfoProcessor:
         self.cluster_config = {
             'min_cluster_size': config['MIN_CLUSTER_SIZE'],
             'min_samples': config['MIN_SAMPLES'],
-            # 可以设置epsilon，这里先注释掉了，如果需要取消注释
             # 'epsilon': config['EPSILON']
         }
         self.delete_old_days = config['DELETE_OLD_DAYS']
@@ -201,8 +200,8 @@ class InfoProcessor:
         使用HDBSCAN进行聚类，并更新文档的 summary_embedding_cluster_label 字段
         """
         documents = list(self.collection.find({
-            "summary_embedding": {"$exists": True},
-            "archived": {"$ne": 1}
+            "summary_embedding": {"$exists": True}
+            # "archived": {"$ne": 1}
         }))
         if not documents:
             logger.warning("没有任何文档包含 summary_embedding，无法聚类。")
@@ -214,7 +213,6 @@ class InfoProcessor:
         self.clusterer = hdbscan.HDBSCAN(
             min_cluster_size=self.cluster_config['min_cluster_size'],
             min_samples=self.cluster_config['min_samples'],
-            # 可以设置epsilon，这里先注释掉了，如果需要取消注释
             # cluster_selection_epsilon=self.cluster_config['epsilon'],
         )
         cluster_labels = self.clusterer.fit_predict(X)
@@ -234,7 +232,7 @@ class InfoProcessor:
         为满足最小簇大小要求的簇生成标题。
         使用 summary_embedding_cluster_label 作为唯一标识，不再生成 event_id。
         """
-        # 确保我已经做过 do_hdbscan
+        # 确保我们已经有 self.clusterer（即已经做过 do_hdbscan）
         clusterer = getattr(self, 'clusterer', None)
         if not clusterer:
             logger.warning("尚未进行 HDBSCAN 聚类，无法生成事件标题。请先调用 do_hdbscan()。")
@@ -243,7 +241,7 @@ class InfoProcessor:
         # 一次性拿到所有尚未设置 event_title 的文档
         docs = list(self.collection.find({
             "summary_embedding_cluster_label": {"$exists": True},
-            "event_title": {"$exists": False},
+            # "event_title": {"$exists": False},
             "archived": {"$ne": 1}
         }))
 
